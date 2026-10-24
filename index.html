@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f6c945">
+<title>Groendenne Stock Manager</title>
+<style>
+:root{--pink:#e83e8c;--yellow:#ffd447;--ink:#24212b;--muted:#6f6a77;--bg:#fffaf0;--card:#fff;--line:#eee4d4;--green:#16845b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:linear-gradient(120deg,var(--yellow),#ffe991);padding:22px 16px 18px;border-bottom:4px solid var(--pink)}
+.wrap{max-width:1100px;margin:auto;padding:0 14px}h1{font-size:24px;margin:0 0 4px}header p{margin:0;color:#4f4630}.pill{display:inline-block;background:#fff;border-radius:99px;padding:5px 10px;font-size:12px;font-weight:700;margin-top:10px}
+nav{display:flex;gap:8px;overflow:auto;padding:12px 0;position:sticky;top:0;background:var(--bg);z-index:5}
+nav button,.btn{border:0;border-radius:12px;padding:10px 13px;background:#fff;border:1px solid var(--line);font-weight:700;color:var(--ink);white-space:nowrap;cursor:pointer}
+nav button.active,.primary{background:var(--pink);color:white;border-color:var(--pink)}
+main{padding-bottom:40px}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 18px}
+.stat,.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;box-shadow:0 3px 12px #35200008}
+.stat small{color:var(--muted);display:block}.stat strong{display:block;font-size:clamp(18px,3vw,25px);margin-top:4px;overflow-wrap:anywhere}
+.panel{margin:12px 0}.panel h2{font-size:18px;margin:0 0 12px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row>*{flex:1}
+input,select{width:100%;padding:11px 10px;border:1px solid #ded5c8;border-radius:10px;background:white;font:inherit;min-width:0}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px} .field{min-width:130px;flex:1}
+.formgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:11px;text-transform:uppercase;color:var(--muted);background:#fffaf4;position:sticky;top:55px}
+.tablewrap{overflow:auto}td.num,th.num{text-align:right;white-space:nowrap}.empty{text-align:center;color:var(--muted);padding:24px}
+.tag{font-size:11px;background:#fff0f7;color:#a21b5c;border-radius:6px;padding:4px 6px;display:inline-block}.muted{color:var(--muted);font-size:12px}.danger{color:#b42318;background:#fff;border:1px solid #f3c4c0}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.notice{background:#fff7d7;border:1px solid #f3dc83;padding:12px;border-radius:12px;font-size:13px}
+@media(max-width:700px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.formgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:0 10px}h1{font-size:21px}.panel{padding:12px}th{top:52px}}
+@media(max-width:420px){.formgrid{grid-template-columns:1fr 1fr}.formgrid .wide{grid-column:1/-1}}
+</style></head>
+<body>
+<header><div class="wrap"><h1>🌸 Groendenne Stock Manager</h1><p>Bottle Store · Butchery · Stock value & potential profit</p><span class="pill">PINK & YELLOW • MOBILE STOCKTAKING</span></div></header>
+<div class="wrap">
+<nav id="nav"><button class="active" data-tab="dashboard">Dashboard</button><button data-tab="inventory">Inventory</button><button data-tab="stocktake">Stocktake</button><button data-tab="movements">Stock movements</button><button data-tab="reports">Reports</button></nav>
+<main id="app"></main>
+<p class="muted">Prototype note: this preview saves data in this browser on this device. It does not yet sync to other users/devices. Connect a shared database before using it as your live business record.</p>
+</div>
+<script>
+const cats={
+"Bottle Store":["Cots","Cans","Dumpies","Tots","Wines","Whiskies 750ml","Whiskies 200ml","Others"],
+"Butchery":["Meat","Cooked food","Zimbabwean products","Others"],
+"Guesthouse":["Rooms","Supplies","Other"]
+};
+const money=n=>new Intl.NumberFormat("en-ZA",{style:"currency",currency:"ZAR",maximumFractionDigits:2}).format(Number(n)||0);
+let products=JSON.parse(localStorage.getItem("gsm_products")||"[]");
+let moves=JSON.parse(localStorage.getItem("gsm_moves")||"[]");
+let stocktakes=JSON.parse(localStorage.getItem("gsm_stocktakes")||"[]");
+let tab="dashboard", filterBusiness="All", search="";
+function save(){localStorage.setItem("gsm_products",JSON.stringify(products));localStorage.setItem("gsm_moves",JSON.stringify(moves));localStorage.setItem("gsm_stocktakes",JSON.stringify(stocktakes))}
+function onHand(p){return Number(p.opening||0)+Number(p.purchased||0)-Number(p.sold||0)-Number(p.wastage||0)+Number(p.countAdjustment||0)}
+function totals(list=products){return list.reduce((a,p)=>{let q=onHand(p);a.qty+=q;a.cost+=q*Number(p.cost||0);a.sales+=q*Number(p.sell||0);a.profit+=q*(Number(p.sell||0)-Number(p.cost||0));return a},{qty:0,cost:0,sales:0,profit:0})}
+function productForm(){return `<section class="panel"><h2>Add a product</h2><form id="addForm"><div class="formgrid">
+<div class="field"><label>Business</label><select name="business" id="business" required>${Object.keys(cats).map(x=>`<option>${x}</option>`).join("")}</select></div>
+<div class="field"><label>Category</label><select name="category" id="category"></select></div>
+<div class="field"><label>Product name</label><input name="name" placeholder="e.g. beer brand / beef" required></div>
+<div class="field"><label>Opening stock quantity</label><input name="opening" type="number" min="0" step="any" value="0" required></div>
+<div class="field"><label>New stock purchased</label><input name="purchased" type="number" min="0" step="any" value="0" required></div>
+<div class="field"><label>Unit / pack</label><input name="unit" placeholder="bottle, crate, kg, item" value="unit"></div>
+<div class="field"><label>Cost price per unit (R)</label><input name="cost" type="number" min="0" step="0.01" placeholder="0.00" required></div>
+<div class="field"><label>Selling price per unit (R)</label><input name="sell" type="number" min="0" step="0.01" placeholder="0.00" required></div>
+<div class="field"><label>Low-stock alert at</label><input name="low" type="number" min="0" step="any" value="0"></div>
+</div><div class="actions"><button class="btn primary" type="submit">＋ Add product</button></div></form></section>`}
+function productTable(list){if(!list.length)return `<div class="empty">No products added yet. Add your first product above.</div>`;
+return `<div class="tablewrap"><table><thead><tr><th>Product / category</th><th class="num">Available</th><th class="num">Cost/unit</th><th class="num">Sell/unit</th><th class="num">Stock cost</th><th class="num">Potential sales</th><th class="num">Gross profit</th><th></th></tr></thead><tbody>${list.map(p=>{let q=onHand(p);return `<tr><td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.business)} · ${esc(p.category)} · ${esc(p.unit||"unit")}</span>${q<=Number(p.low||0)?'<br><span class="tag">Low stock</span>':""}</td><td class="num">${q}</td><td class="num">${money(p.cost)}</td><td class="num">${money(p.sell)}</td><td class="num">${money(q*p.cost)}</td><td class="num">${money(q*p.sell)}</td><td class="num">${money(q*(p.sell-p.cost))}</td><td><button class="btn danger" onclick="delProduct('${p.id}')">Delete</button></td></tr>`}).join("")}</tbody></table></div>`}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function dashboard(){let t=totals();return `<div class="stats"><div class="stat"><small>Products listed</small><strong>${products.length}</strong></div><div class="stat"><small>Stock cost value</small><strong>${money(t.cost)}</strong></div><div class="stat"><small>Potential sales</small><strong>${money(t.sales)}</strong></div><div class="stat"><small>Potential gross profit</small><strong>${money(t.profit)}</strong></div></div>
+<div class="notice">Potential gross profit = value of remaining stock at selling prices less its cost value. This is before operating expenses. Record sold quantities in Stock movements to keep available stock accurate.</div>
+<section class="panel"><h2>Business overview</h2><div class="stats">${Object.keys(cats).map(b=>{let t=totals(products.filter(p=>p.business===b));return `<div class="stat"><small>${b}</small><strong>${money(t.cost)}</strong><small>Potential sales ${money(t.sales)}</small><small>Gross profit ${money(t.profit)}</small></div>`}).join("")}</div></section>
+<section class="panel"><h2>Recent products</h2>${productTable(products.slice(-5).reverse())}</section>`}
+function inventory(){let list=products.filter(p=>(filterBusiness==="All"||p.business===filterBusiness)&&(`${p.name} ${p.category} ${p.business}`).toLowerCase().includes(search.toLowerCase()));return `${productForm()}<section class="panel"><div class="row"><h2>Inventory list</h2><div class="field"><label>Filter business</label><select id="filterBusiness">${["All",...Object.keys(cats)].map(b=>`<option ${filterBusiness===b?"selected":""}>${b}</option>`).join("")}</select></div><div class="field"><label>Search product</label><input id="search" value="${esc(search)}" placeholder="Search products..."></div></div>${productTable(list)}</section>`}
+
+function stocktake(){
+ if(!products.length) return `<section class="panel"><h2>Physical stocktake</h2><div class="empty">Add products in Inventory first. Then return here to compare book stock with your physical count.</div></section>`;
+ return `<section class="panel"><h2>📋 Physical stocktake</h2>
+ <p>Enter the quantity you actually counted for each product. The app compares it with expected stock on hand and calculates shortages or overages at cost price.</p>
+ <div class="notice"><b>How it works:</b> Variance = physical count − expected stock. A negative variance means stock is missing; a positive variance means you counted more than the records show. Saving a stocktake adjusts the on-hand balance to the counted quantity and keeps a variance history.</div>
+ <div class="row" style="margin:12px 0"><div class="field"><label>Business filter</label><select id="takeBusiness">${["All",...Object.keys(cats)].map(b=>`<option>${b}</option>`).join("")}</select></div><div class="field"><label>Count date</label><input id="takeDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div></div>
+ <form id="stocktakeForm"><div class="tablewrap"><table><thead><tr><th>Product</th><th class="num">Expected on hand</th><th class="num">Physical count</th><th class="num">Variance</th><th class="num">Variance at cost</th><th class="num">Variance at selling</th></tr></thead><tbody id="takeRows">${products.map(p=>{let q=onHand(p);return `<tr data-business="${esc(p.business)}"><td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.business)} · ${esc(p.category)}</span></td><td class="num expected">${q}</td><td class="num"><input aria-label="Physical count for ${esc(p.name)}" class="countInput" data-id="${p.id}" type="number" min="0" step="any" placeholder="Enter count" style="width:110px"></td><td class="num variance">—</td><td class="num costvar">—</td><td class="num sellvar">—</td></tr>`}).join("")}</tbody></table></div><div class="actions"><button class="btn primary" type="submit">Save stocktake & adjust stock</button></div></form></section>
+ <section class="panel"><h2>Previous stocktake variances</h2>${stocktakes.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Product</th><th>Expected</th><th>Counted</th><th>Variance</th><th>Cost impact</th></tr></thead><tbody>${stocktakes.slice().reverse().map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.name)}</td><td>${x.expected}</td><td>${x.counted}</td><td>${x.variance>0?"+":""}${x.variance}</td><td>${money(x.costImpact)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="empty">No stocktakes saved yet.</div>'}</section>`;
+}
+
+function movements(){return `<section class="panel"><h2>Record stock movement</h2><p class="muted">Use this for stock sold, damaged/wasted, or new stock received. New purchases recorded here also increase stock.</p><form id="moveForm"><div class="formgrid"><div class="field wide"><label>Product</label><select name="product" required>${products.map(p=>`<option value="${p.id}">${esc(p.name)} — ${esc(p.business)}</option>`).join("")}</select></div><div class="field"><label>Movement type</label><select name="type"><option value="sold">Sold</option><option value="purchased">Stock received / purchased</option><option value="wastage">Damaged / wastage</option><option value="adjustment">Stock count adjustment (+/-)</option></select></div><div class="field"><label>Quantity</label><input name="qty" type="number" step="any" required></div><div class="field"><label>Date</label><input name="date" type="date" value="${new Date().toISOString().slice(0,10)}" required></div></div><div class="actions"><button class="btn primary">Save movement</button></div></form></section>
+<section class="panel"><h2>Movement history</h2>${moves.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th class="num">Quantity</th><th class="num">Value</th></tr></thead><tbody>${moves.slice().reverse().map(m=>`<tr><td>${esc(m.date)}</td><td>${esc(m.name)}</td><td>${esc(m.type)}</td><td class="num">${m.qty}</td><td class="num">${money(m.value)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="empty">No stock movements recorded.</div>'}</section>`}
+function reports(){
+ let t=totals(), shortages=stocktakes.filter(x=>Number(x.variance)<0).slice().reverse(), overages=stocktakes.filter(x=>Number(x.variance)>0).slice().reverse(), varianceRows=stocktakes.slice().reverse(), recentMoves=moves.slice().reverse();
+ return `<section class="panel"><h2>📊 Combined Stock Report</h2><p class="muted">One report combining current stock valuation, shortages/overages from stocktakes, and stock movement history.</p>
+ <div class="stats"><div class="stat"><small>Current stock cost</small><strong>${money(t.cost)}</strong></div><div class="stat"><small>Potential sales</small><strong>${money(t.sales)}</strong></div><div class="stat"><small>Potential gross profit</small><strong>${money(t.profit)}</strong></div><div class="stat"><small>Shortage records</small><strong>${shortages.length}</strong></div><div class="stat"><small>Units short</small><strong>${shortages.reduce((a,x)=>a+Math.abs(Number(x.variance)||0),0).toLocaleString("en-ZA")}</strong></div><div class="stat"><small>Shortage cost value</small><strong>${money(shortages.reduce((a,x)=>a+Math.abs(Number(x.costImpact)||0),0))}</strong></div><div class="stat"><small>Movement records</small><strong>${moves.length}</strong></div><div class="stat"><small>Overage records</small><strong>${overages.length}</strong></div></div>
+ <div class="actions"><button class="btn primary" onclick="exportCombinedReport()">Download combined report CSV</button><button class="btn" onclick="window.print()">Print / Save combined PDF</button></div></section>
+ <section class="panel"><h2>1. Current Stock Valuation</h2>${productTable(products)}</section>
+ <section class="panel"><h2>2. Stock Shortages & Overages</h2><p class="muted">Variance = physical count minus expected stock. Negative means shortage; positive means overage.</p>
+ ${varianceRows.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Business / Product</th><th class="num">Expected</th><th class="num">Counted</th><th class="num">Variance</th><th class="num">Cost impact</th><th class="num">Selling value impact</th><th>Source</th></tr></thead><tbody>${varianceRows.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.business||"")}<br><b>${esc(x.name)}</b></td><td class="num">${x.expected}</td><td class="num">${x.counted}</td><td class="num">${Number(x.variance)>0?"+":""}${x.variance}</td><td class="num">${money(x.costImpact)}</td><td class="num">${money(x.sellingImpact||0)}</td><td>${esc(x.source||"Manual stocktake")}</td></tr>`).join("")}</tbody></table></div>`:'<div class="empty">No stocktake shortages or overages recorded yet. Complete a stocktake to populate this section.</div>'}</section>
+ <section class="panel"><h2>3. Stock Movement Report</h2>${recentMoves.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Product</th><th>Movement</th><th class="num">Quantity</th><th class="num">Value</th><th>Source</th></tr></thead><tbody>${recentMoves.map(m=>`<tr><td>${esc(m.date)}</td><td>${esc(m.name)}</td><td>${esc(m.type)}</td><td class="num">${m.qty}</td><td class="num">${money(m.value)}</td><td>${esc(m.source||"Manual entry")}</td></tr>`).join("")}</tbody></table></div>`:'<div class="empty">No stock movements recorded yet. Record purchases, sales, or wastage to populate this section.</div>'}</section>`;
+}
+function exportCombinedReport(){
+ const rows=[["REPORT SECTION","Date","Business","Product","Category / Movement","Expected stock","Counted stock","Variance / Qty","Cost price","Selling price","Cost impact / Movement value","Selling value impact","Notes"]];
+ products.forEach(p=>{const q=onHand(p);rows.push(["Current Stock",new Date().toISOString().slice(0,10),p.business,p.name,p.category,"","",q,p.cost,p.sell,q*p.cost,q*p.sell,"Potential gross profit "+(q*(p.sell-p.cost)).toFixed(2)])});
+ stocktakes.forEach(x=>rows.push(["Stocktake Variance",x.date,x.business||"",x.name,"Physical count",x.expected,x.counted,x.variance,"","",x.costImpact||0,x.sellingImpact||0,x.source||"Manual stocktake"]));
+ moves.forEach(m=>rows.push(["Stock Movement",m.date,"",m.name,m.type,"","",m.qty,"","",m.value||0,"",m.source||"Manual entry"]));
+ const csv=rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download="Groendenne_Combined_Stock_Report.csv";a.click();URL.revokeObjectURL(a.href);
+}
+function render(){document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));document.getElementById("app").innerHTML=tab==="dashboard"?dashboard():tab==="inventory"?inventory():tab==="stocktake"?stocktake():tab==="movements"?movements():reports();
+const biz=document.getElementById("business"),cat=document.getElementById("category");if(biz&&cat){function setCats(){cat.innerHTML=cats[biz.value].map(c=>`<option>${c}</option>`).join("")}biz.onchange=setCats;setCats()}
+const f=document.getElementById("addForm");if(f)f.onsubmit=e=>{e.preventDefault();let d=Object.fromEntries(new FormData(f));products.push({...d,id:crypto.randomUUID(),opening:+d.opening,purchased:+d.purchased,sold:0,wastage:0,cost:+d.cost,sell:+d.sell,low:+d.low});save();render()};
+const ff=document.getElementById("filterBusiness");if(ff)ff.onchange=()=>{filterBusiness=ff.value;render()};const ss=document.getElementById("search");if(ss)ss.oninput=()=>{search=ss.value;let pos=ss.selectionStart;render();let el=document.getElementById("search");el.focus();el.setSelectionRange(pos,pos)};
+const takeBiz=document.getElementById("takeBusiness");
+if(takeBiz)takeBiz.onchange=()=>{document.querySelectorAll("#takeRows tr").forEach(r=>r.style.display=(takeBiz.value==="All"||r.dataset.business===takeBiz.value)?"":"none")};
+document.querySelectorAll(".countInput").forEach(inp=>inp.oninput=()=>{
+ const row=inp.closest("tr"),p=products.find(x=>x.id===inp.dataset.id),v=inp.value===""?null:Number(inp.value);
+ if(v===null||!p){row.querySelector(".variance").textContent="—";row.querySelector(".costvar").textContent="—";row.querySelector(".sellvar").textContent="—";return}
+ const d=v-onHand(p);row.querySelector(".variance").textContent=(d>0?"+":"")+d;row.querySelector(".costvar").textContent=money(d*p.cost);row.querySelector(".sellvar").textContent=money(d*p.sell);
+});
+const stf=document.getElementById("stocktakeForm");
+if(stf)stf.onsubmit=e=>{
+ e.preventDefault();const date=document.getElementById("takeDate").value||new Date().toISOString().slice(0,10);
+ const visibleBiz=document.getElementById("takeBusiness").value;
+ const inputs=[...document.querySelectorAll(".countInput")].filter(i=>i.value!=="" && (visibleBiz==="All"||i.closest("tr").dataset.business===visibleBiz));
+ if(!inputs.length){alert("Enter at least one physical count before saving.");return}
+ if(!confirm("Save these counts and adjust the recorded stock balances to match the physical counts?"))return;
+ inputs.forEach(inp=>{const p=products.find(x=>x.id===inp.dataset.id);if(!p)return;const expected=onHand(p),counted=Number(inp.value),variance=counted-expected;
+ stocktakes.push({date,name:p.name,business:p.business,expected,counted,variance,costImpact:variance*Number(p.cost||0),sellingImpact:variance*Number(p.sell||0)});
+ p.countAdjustment=Number(p.countAdjustment||0)+variance;
+ });
+ save();render();
+};
+const mf=document.getElementById("moveForm");if(mf)mf.onsubmit=e=>{e.preventDefault();let d=Object.fromEntries(new FormData(mf)),p=products.find(x=>x.id===d.product),q=+d.qty;if(!p||!q)return;let value=q*(d.type==="sold"?p.sell:p.cost);if(d.type==="sold")p.sold+=q;else if(d.type==="purchased")p.purchased+=q;else if(d.type==="wastage")p.wastage+=q;else p.opening+=q;moves.push({date:d.date,name:p.name,type:d.type,qty:q,value});save();render()};
+}
+function delProduct(id){if(confirm("Delete this product and its saved stock record?")){products=products.filter(p=>p.id!==id);save();render()}}
+function clearData(){if(confirm("This permanently clears all products and movements saved in this browser. Continue?")){products=[];moves=[];stocktakes=[];save();render()}}
+function exportCSV(){let rows=[["Business","Category","Product","Unit","Opening stock","Purchased","Sold","Wastage","Count adjustments","Available","Cost price","Selling price","Stock cost value","Potential sales","Potential gross profit"]];products.forEach(p=>{let q=onHand(p);rows.push([p.business,p.category,p.name,p.unit,p.opening,p.purchased,p.sold,p.wastage,p.countAdjustment||0,q,p.cost,p.sell,q*p.cost,q*p.sell,q*(p.sell-p.cost)])});let csv=rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download="Groendenne_Stock_Report.csv";a.click();URL.revokeObjectURL(a.href)}
+document.getElementById("nav").onclick=e=>{let b=e.target.closest("button[data-tab]");if(b){tab=b.dataset.tab;render()}};render();
+</script></body></html>
